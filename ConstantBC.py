@@ -28,6 +28,7 @@ class ConstantBC(df.DirichletBC):
         # Adds the missing argument (the value on the boundary) before calling
         # the parent constructor. The value must be zero to set the
         # corresponding elements in the load vector to zero.
+
         args = list(args)
         args.insert(1, df.Constant(0.0))
         monitor = False
@@ -42,12 +43,22 @@ class ConstantBC(df.DirichletBC):
         for A in args:
 
             if isinstance(A, df.GenericVector):
-                # Applying to load vectory
+                # Applying to load vectory.
+                # Set all elements to zero but leave the first.
+
+                ind = self.get_boundary_values().keys()
+                first_ind = list(ind)[0]
+                first_element = A[first_ind][0]
 
                 df.DirichletBC.apply(self, A)
 
+                A[first_ind] = first_element
+
             else:
-                # Applying to stiffness matrix
+                # Applying to stiffness matrix.
+                # Leave the first row on the boundary node, but change the
+                # remaining to be the average of it's neighbors also on the
+                # boundary.
 
                 ind = self.get_boundary_values().keys()
 
