@@ -2,8 +2,6 @@ __pycache__
 **.xml
 **.msh
 **.vtu
+**.pvd
 **.png
 convergence.txt
-phi.pvd
-**.xml
-**.msh
