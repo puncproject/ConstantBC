@@ -24,10 +24,11 @@ from ConstantBC import ConstantBC
 iterative_solver    = True
 monitor_convergence = True
 monitor_bc          = True
+compiled_apply      = False
 external_mesh       = True # NB: There's some trouble with mshr.
 store_to_file       = False
 order               = 1
-resolution          = 6
+resolution          = 4
 
 rho = Constant(0.0)
 # rho = Expression("100*x[0]", degree=2)
@@ -73,7 +74,7 @@ psi, mu = TestFunctions(W)
 # bc_i = ConstantBC(W.sub(0), gamma_i)
 
 bc_e = DirichletBC(W.sub(0), Constant(0), bnd, gamma_e_id)
-bc_i = ConstantBC(W.sub(0), bnd, gamma_i_id)
+bc_i = ConstantBC(W.sub(0), bnd, gamma_i_id, compiled_apply=compiled_apply)
 bc_i.monitor(monitor_bc)
 
 dss = Measure("ds", domain=mesh, subdomain_data=bnd)
