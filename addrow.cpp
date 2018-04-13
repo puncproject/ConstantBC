@@ -67,7 +67,6 @@ void addrow(GenericMatrix& B, GenericMatrix& Bc, GenericMatrix& A0,
   std::vector<std::vector<dolfin::la_index>> global_dofs(2);
 
   global_dofs[0].push_back(0);
-  std::cout << MPI::rank(mesh.mpi_comm()) << " "  << primary_range.first << " " << diagonal_range << std::endl;
   // Iterate over rows
   for (std::size_t i = 0; i < (diagonal_range - primary_range.first); i++)
   {
@@ -89,7 +88,7 @@ void addrow(GenericMatrix& B, GenericMatrix& Bc, GenericMatrix& A0,
     }
     for (std::size_t j = 0; j < columns.size(); j++)
     {
-      // Store if non-zero or diagonal entry. PETSc solvers require this
+      // Store if non-zero or diagonal entry.
       if (std::abs(values[j]) > DOLFIN_EPS || columns[j] == global_row)
       {
         global_dofs[1].push_back(columns[j]);
@@ -102,7 +101,6 @@ void addrow(GenericMatrix& B, GenericMatrix& Bc, GenericMatrix& A0,
     offset[i + 1] = offset[i] + count;
     dofs[0].set(global_dofs[0]);
     dofs[1].set(global_dofs[1]);
-    // Build new compressed sparsity pattern
     new_sparsity_pattern.insert_global(dofs);
   }
 
@@ -112,7 +110,7 @@ void addrow(GenericMatrix& B, GenericMatrix& Bc, GenericMatrix& A0,
   // Create matrix with the new layout
   Bc.init(*layout);
 
-  // Put the values back into new compressed matrix
+  // Put the values back into new matrix
   for (std::size_t i = 0; i < m; i++)
   {
     const dolfin::la_index global_row = i + primary_range.first;

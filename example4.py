@@ -71,10 +71,6 @@ lamb = TrialFunction(R)
 psi = TestFunction(W)
 mu = TestFunction(R)
 
-# Works, but requires gamma_e and gamma_i to be defined
-# bc_e = DirichletBC(W.sub(0), Constant(0), gamma_e)
-# bc_i = ConstantBC(W.sub(0), gamma_i)
-
 bc_e = DirichletBC(W, Constant(0), bnd, gamma_e_id)
 bc_i = ConstantBC(W, bnd, gamma_i_id, compiled_apply=compiled_apply)
 bc_i.monitor(monitor_bc)
@@ -131,7 +127,6 @@ else:
     print("Solving equation using direct solver")
     solve(B, wh.vector(), b)
 
-#uh, ph = wh.split(deepcopy=True)
 uh = wh
 
 print("Computing actual object charge")
