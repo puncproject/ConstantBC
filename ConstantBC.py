@@ -48,6 +48,10 @@ class ConstantBC(df.DirichletBC):
         args = list(args)
         args.insert(1, df.Constant(0.0))
         monitor = False
+        self.compiled_apply = kwargs.pop('compiled_apply', False)
+        if self.compiled_apply:
+            code = open('apply.cpp', 'r').read()
+            self.compiled_apply = df.compile_extension_module(code=code)
 
         df.DirichletBC.__init__(self, *args, **kwargs)
 
@@ -77,24 +81,27 @@ class ConstantBC(df.DirichletBC):
                 # boundary.
 
                 ind = self.get_boundary_values().keys()
+                if self.compiled_apply:
+                    self.compiled_apply.apply(A, np.array(list(ind), dtype=np.intc))
 
-                length = len(list(ind))-2
+                else:
+                    length = len(list(ind))-2
+                    allneighbors = []
+                    inda = np.array(list(ind), dtype=np.intc)
+                    for it, i in enumerate(inda[1:]):
+                        allneighbors.append(A.getrow(i)[0])
+                    zero_rows = np.array(inda[1:], dtype=np.intc)
+                    A.zero(zero_rows)
 
-                for it, i in enumerate(list(ind)[1:]):
-
-                    if self.monitor:
-                        print("ConstantBC iteration", it, "of", length)
-
-                    neighbors = A.getrow(i)[0]
-                    A.zero(np.array([i], dtype=np.intc))
-
-                    surface_neighbors = np.array([n for n in neighbors if n in ind])
-                    values = -np.ones(surface_neighbors.shape)
-
-                    self_index = np.where(surface_neighbors==i)[0][0]
-                    num_of_neighbors = len(surface_neighbors)-1
-                    values[self_index] = num_of_neighbors
-
-                    A.setrow(i, surface_neighbors, values)
-
+                    for it, i in enumerate(inda[1:]):
+                        if self.monitor:
+                            print("ConstantBC iteration", it, "of", length)
+                        neighbors = allneighbors[it]
+                        surface_neighbors = np.array([n for n in neighbors if n in ind])
+                        values = -np.ones(surface_neighbors.shape)
+                        self_index = np.where(surface_neighbors==i)[0][0]
+                        num_of_neighbors = len(surface_neighbors)-1
+                        values[self_index] = num_of_neighbors
+                        A.setrow(i, surface_neighbors, values)
                     A.apply('insert')
+

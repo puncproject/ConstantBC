@@ -23,8 +23,8 @@ from ConstantBC import ConstantBC
 
 iterative_solver    = True
 monitor_convergence = True
-monitor_bc          = True
-compiled_apply      = False
+monitor_bc          = False
+compiled_apply      = True
 external_mesh       = True # NB: There's some trouble with mshr.
 store_to_file       = False
 order               = 1
@@ -59,22 +59,20 @@ else:
     gamma_e.mark(bnd, gamma_e_id)
     gamma_i.mark(bnd, gamma_i_id)
 
-
 print("Making spaces")
 cell = mesh.ufl_cell()
 VE = FiniteElement("Lagrange", cell, order)
 RE = FiniteElement("Real", cell, 0)
-W = FunctionSpace(mesh, MixedElement([VE, RE]))
+W = FunctionSpace(mesh, VE)
+R = FunctionSpace(mesh, RE)
 
-phi, lamb = TrialFunctions(W)
-psi, mu = TestFunctions(W)
+phi = TrialFunction(W)
+lamb = TrialFunction(R)
+psi = TestFunction(W)
+mu = TestFunction(R)
 
-# Works, but requires gamma_e and gamma_i to be defined
-# bc_e = DirichletBC(W.sub(0), Constant(0), gamma_e)
-# bc_i = ConstantBC(W.sub(0), gamma_i)
-
-bc_e = DirichletBC(W.sub(0), Constant(0), bnd, gamma_e_id)
-bc_i = ConstantBC(W.sub(0), bnd, gamma_i_id, compiled_apply=compiled_apply)
+bc_e = DirichletBC(W, Constant(0), bnd, gamma_e_id)
+bc_i = ConstantBC(W, bnd, gamma_i_id, compiled_apply=compiled_apply)
 bc_i.monitor(monitor_bc)
 
 dss = Measure("ds", domain=mesh, subdomain_data=bnd)
@@ -85,13 +83,12 @@ print("Creating variational form")
 S = assemble(1.*ds_i)
 n = FacetNormal(mesh)
 
-lhs = dot(grad(phi), grad(psi)) * dx   \
-    - psi  * dot(grad(phi), n)  * ds_i \
-    + lamb * dot(grad(psi), n)  * ds_i \
-    + mu   * dot(grad(phi), n)  * ds_i
+lhs = dot(grad(phi), grad(psi)) * dx
+rhs = rho*psi * dx
 
-rhs = rho*psi * dx  \
-    + Q*mu /S * ds_i
+a0 = inner(mu, dot(grad(phi), n))*ds_i
+
+A0 = assemble(a0)
 
 print("Assembling matrix")
 # Do not use assemble_system()
@@ -104,21 +101,33 @@ bc_i.apply(A, b)
 
 wh = Function(W)
 
+print("Setting final dof on boundary to enforce inner(dot(grad(u), n))*dsi = Q")
+int_bc = DirichletBC(W, 2, bnd, gamma_i_id)
+ww = Function(W)
+int_bc.apply(ww.vector())
+bnd_dof = list(bc_i.get_boundary_values().keys())[0]
+row, col = A0.getrow(0)
+code = open('addrow.cpp', 'r').read()
+compiled = compile_extension_module(code=code)
+B = Matrix()
+compiled.addrow(A, B, A0, bnd_dof, W)
+b[bnd_dof] = Q(0)
+
 if iterative_solver:
     print("Solving equation using iterative solver")
-    solver = PETScKrylovSolver('bicgstab','ilu')
+    solver = PETScKrylovSolver('gmres','hypre_amg')
     solver.parameters['absolute_tolerance'] = 1e-14
     solver.parameters['relative_tolerance'] = 1e-10 #e-12
     solver.parameters['maximum_iterations'] = 100000
     solver.parameters['monitor_convergence'] = monitor_convergence
 
-    solver.set_operator(A)
+    solver.set_operator(B)
     solver.solve(wh.vector(), b)
 else:
     print("Solving equation using direct solver")
-    solve(A, wh.vector(), b)
+    solve(B, wh.vector(), b)
 
-uh, ph = wh.split(deepcopy=True)
+uh = wh
 
 print("Computing actual object charge")
 Qm = assemble(dot(grad(uh), n) * ds_i)

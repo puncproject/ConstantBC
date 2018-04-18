@@ -24,7 +24,6 @@ from ConstantBC import ConstantBC
 iterative_solver    = True
 monitor_convergence = True
 monitor_bc          = True
-compiled_apply      = False
 external_mesh       = True # NB: There's some trouble with mshr.
 store_to_file       = False
 order               = 1
@@ -59,23 +58,46 @@ else:
     gamma_e.mark(bnd, gamma_e_id)
     gamma_i.mark(bnd, gamma_i_id)
 
+mesh.init()
+facet_on_bnd_id = bnd.where_equal(gamma_i_id)[0]
+facet_on_bnd = list(facets(mesh))[facet_on_bnd_id]
+vertex_on_bnd_id = facet_on_bnd.entities(0)[0]
+vertex_on_bnd = mesh.coordinates()[vertex_on_bnd_id]
+
+class ConstantBoundary(SubDomain):
+
+    def inside(self, x, on_bnd):
+        on_vertex = np.linalg.norm(x-vertex_on_bnd[:len(x)])<EPS
+        # on_sphere = np.linalg.norm(x)-1*ri<EPS
+        # is_inside = on_bnd and on_sphere and on_vertex
+        # return is_inside
+        return on_vertex
+
+    def map(self, x, y):
+        on_sphere = np.linalg.norm(x)-1*ri<EPS
+        on_vertex = np.linalg.norm(x-vertex_on_bnd[:len(x)])<EPS
+        if on_sphere and not on_vertex:
+            y[0] = ri
+            y[1] = 0
+            y[2] = 0
+        else:
+            y[0] = x[0]
+            y[1] = x[1]
+            y[2] = x[2]
 
 print("Making spaces")
 cell = mesh.ufl_cell()
 VE = FiniteElement("Lagrange", cell, order)
 RE = FiniteElement("Real", cell, 0)
-W = FunctionSpace(mesh, MixedElement([VE, RE]))
+W = FunctionSpace(mesh, VE, constrained_domain=ConstantBoundary())
+R = FunctionSpace(mesh, RE)
 
-phi, lamb = TrialFunctions(W)
-psi, mu = TestFunctions(W)
+phi = TrialFunction(W)
+psi = TestFunction(W)
+lamb = TrialFunction(R)
+mu = TestFunction(R)
 
-# Works, but requires gamma_e and gamma_i to be defined
-# bc_e = DirichletBC(W.sub(0), Constant(0), gamma_e)
-# bc_i = ConstantBC(W.sub(0), gamma_i)
-
-bc_e = DirichletBC(W.sub(0), Constant(0), bnd, gamma_e_id)
-bc_i = ConstantBC(W.sub(0), bnd, gamma_i_id, compiled_apply=compiled_apply)
-bc_i.monitor(monitor_bc)
+bc_e = DirichletBC(W, Constant(0), bnd, gamma_e_id)
 
 dss = Measure("ds", domain=mesh, subdomain_data=bnd)
 ds_i = dss(gamma_i_id)
@@ -85,28 +107,40 @@ print("Creating variational form")
 S = assemble(1.*ds_i)
 n = FacetNormal(mesh)
 
-lhs = dot(grad(phi), grad(psi)) * dx   \
-    - psi  * dot(grad(phi), n)  * ds_i \
-    + lamb * dot(grad(psi), n)  * ds_i \
-    + mu   * dot(grad(phi), n)  * ds_i
-
-rhs = rho*psi * dx  \
-    + Q*mu /S * ds_i
+lhs = dot(grad(phi), grad(psi)) * dx
+rhs = rho*psi * dx
+a0 = inner(mu, dot(grad(phi), n))*ds_i
 
 print("Assembling matrix")
 # Do not use assemble_system()
 A = assemble(lhs)
 b = assemble(rhs)
+A0 = assemble(a0)
 
 print("Applying boundary conditions")
 bc_e.apply(A, b)
-bc_i.apply(A, b)
+
+print("Setting final dof on boundary to enforce inner(dot(grad(u), n))*dsi = Q")
+int_bc = DirichletBC(W, 2, bnd, gamma_i_id)
+ww = Function(W)
+int_bc.apply(ww.vector())
+con_dof = np.where(ww.vector().get_local() == 2)[0][0] # The dof all constrained are mapped into
+
+row, col = A0.getrow(0)
+row = row[np.where(abs(col) > 1e-10)[0]]
+col = col[row]
+r0, c0 = A.getrow(con_dof)
+A.setrow(con_dof, r0, np.zeros_like(c0))  # Nullify row
+A.apply('insert')
+A.setrow(con_dof, row, col)               # Enforce inner(dot(grad(u), n))*dsi = Q
+b[con_dof] = Q(0)
+A.apply('insert')
 
 wh = Function(W)
 
 if iterative_solver:
     print("Solving equation using iterative solver")
-    solver = PETScKrylovSolver('bicgstab','ilu')
+    solver = PETScKrylovSolver('gmres','hypre_amg')
     solver.parameters['absolute_tolerance'] = 1e-14
     solver.parameters['relative_tolerance'] = 1e-10 #e-12
     solver.parameters['maximum_iterations'] = 100000
@@ -118,7 +152,8 @@ else:
     print("Solving equation using direct solver")
     solve(A, wh.vector(), b)
 
-uh, ph = wh.split(deepcopy=True)
+#uh, ph = wh.split(deepcopy=True)
+uh = wh
 
 print("Computing actual object charge")
 Qm = assemble(dot(grad(uh), n) * ds_i)
@@ -157,4 +192,4 @@ plt.legend(loc='lower left')
 plt.show()
 
 print("Storing to file")
-File("phi.pvd") << uh
+File("phi2.pvd") << uh
