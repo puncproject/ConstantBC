@@ -27,8 +27,6 @@ monitor_convergence = False
 order               = 2
 resolution          = 4
 
-vsources = [[1,0,-1]]
-
 rho = Constant(0.0)
 rho = Expression("100*x[1]", degree=2)
 
@@ -41,6 +39,9 @@ V = FunctionSpace(mesh, "Lagrange", order)
 
 phi = TrialFunction(V)
 psi = TestFunction(V)
+
+vsources = [[1,0,-1]]
+# vsources = [[-1,0,1],[-1,1,2]]
 
 bc_e = DirichletBC(V, Constant(0), bnd, 1)
 objects = [ObjectBC(V, bnd, 2+i) for i in range(num_objects)]
@@ -61,82 +62,9 @@ b = assemble(rhs)
 
 print("Applying boundary conditions")
 bc_e.apply(A, b)
-
+A, b = circuit.apply(A, b)
 for o in objects:
     o.apply(A, b)
-
-A, b = circuit.apply(A, b)
-
-# groups = get_charge_sharing_sets(vsources, 2)
-
-# R  = FunctionSpace(mesh, "Real", 0)
-# mu = TestFunction(R)
-# dss = Measure("ds", domain=mesh, subdomain_data=bnd)
-# n = FacetNormal(mesh)
-# code = open('addrow2.cpp', 'r').read()
-# compiled = compile_extension_module(code=code)
-
-# rows_charge    = [g[0] for g in groups]
-# rows_potential = list(set(range(num_objects))-set(rows_charge))
-# rows_charge    = [list(objects[i].get_boundary_values().keys())[0] for i in rows_charge]
-# rows_potential = [list(objects[i].get_boundary_values().keys())[0] for i in rows_potential]
-
-# # if int_bnd_ids == None:
-# int_bnd_ids    = [objects[i].domain_args[1] for i in range(num_objects)]
-
-# for group, row in zip(groups, rows_charge):
-
-#     # A
-
-#     ds_group = np.sum([dss(int_bnd_ids[i]) for i in group])
-#     S = assemble(1.*ds_group)
-
-#     a0 = inner(mu, dot(grad(phi), n))*ds_group
-#     A0 = assemble(a0)
-#     cols, vals = A0.getrow(0)
-
-#     B = Matrix()
-#     compiled.addrow(A, B, cols, vals, row, V)
-#     A = B
-
-#     # b
-
-#     charge_group  = np.sum([objects[i].charge for i in group])
-#     b[row] = charge_group
-
-# for vsource, row in zip(vsources, rows_potential):
-
-#     # A
-
-#     obj_a_id = vsource[0]
-#     obj_b_id = vsource[1]
-#     V_ab     = vsource[2]
-
-#     cols = []
-#     vals = []
-
-#     if obj_a_id != -1:
-#         obj_a = objects[obj_a_id]
-#         dof_a = list(obj_a.get_boundary_values().keys())[0]
-#         cols.append(dof_a)
-#         vals.append(-1.0)
-
-#     if obj_b_id != -1:
-#         obj_b = objects[obj_b_id]
-#         dof_b = list(obj_b.get_boundary_values().keys())[0]
-#         cols.append(dof_b)
-#         vals.append(+1.0)
-
-#     cols = np.array(cols, dtype=np.uintp)
-#     vals = np.array(vals)
-
-#     B = Matrix()
-#     compiled.addrow(A, B, cols, vals, row, V)
-#     A = B
-
-#     # b
-
-#     b[row] = V_ab
 
 phi = Function(V)
 
