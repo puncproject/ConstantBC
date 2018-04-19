@@ -103,20 +103,32 @@ class ConstantBC(df.DirichletBC):
                         A.setrow(i, surface_neighbors, values)
                     A.apply('insert')
 
-class CircuitConstraints(object):
+    def get_free_row(self):
+        bnd_rows = self.get_boundary_values().keys()
+        first_bnd_row = list(bnd_rows)[0]
+        return first_bnd_row
 
-    def __init__(objects, vsources, isources):
-        pass
+    def get_boundary_value(self, phi):
+        return phi.vector()[self.get_free_row()][0]
 
-    def apply(self, *args):
-        for A in args:
-            if isinstance(A, df.GenericVector):
-                self.apply_to_vector(A)
-            else:
-                self.apply_to_matrix(A)
+class ObjectBC(ConstantBC):
 
-    def apply_to_matrix(self, A):
-        pass
+    def __init__(self, V, bnd, bnd_id):
+
+        ConstantBC.__init__(self, V, bnd, bnd_id)
+
+        self.charge = 0.
+        mesh = self.function_space().mesh()
+        self.n = df.FacetNormal(mesh)
+        self.dss = df.Measure("ds", domain=mesh, subdomain_data=bnd)
+
+    def correct_charge(self, phi):
+        bnd_id = self.domain_args[1]
+        projection = df.dot(df.grad(phi), self.n) * self.dss(bnd_id)
+        self.charge = df.assemble(projection)
+
+    def get_potential(self, phi):
+        return self.get_boundary_value(phi)
 
 def relabel_bnd(bnd):
     """
@@ -182,3 +194,123 @@ def get_charge_sharing_sets(vsources, num_objects):
 
     return groups
 
+class Circuit(object):
+
+    def __init__(self, V, bnd, objects, vsources=None, isources=None, dt=None, int_bnd_ids=None):
+
+        num_objects = len(objects)
+
+        if int_bnd_ids == None:
+            int_bnd_ids = [objects[i].domain_args[1] for i in range(num_objects)]
+
+        if vsources == None:
+            vsources = []
+
+        if isources == None:
+            isources = []
+            self.dt = 1
+        else:
+            assert dt != None
+            self.dt = dt
+
+        self.int_bnd_ids = int_bnd_ids
+        self.vsources = vsources
+        self.isources = isources
+        self.objects = objects
+
+        self.groups = get_charge_sharing_sets(vsources, num_objects)
+
+        self.V = V
+        mesh = V.mesh()
+        R  = df.FunctionSpace(mesh, "Real", 0)
+        self.mu = df.TestFunction(R)
+        self.phi = df.TrialFunction(V)
+        self.dss = df.Measure("ds", domain=mesh, subdomain_data=bnd)
+        self.n = df.FacetNormal(mesh)
+        code = open('addrow2.cpp', 'r').read()
+        self.compiled = df.compile_extension_module(code=code)
+
+        rows_charge    = [g[0] for g in self.groups]
+        rows_potential = list(set(range(num_objects))-set(rows_charge))
+        self.rows_charge    = [objects[i].get_free_row() for i in rows_charge]
+        self.rows_potential = [objects[i].get_free_row() for i in rows_potential]
+
+    def apply(self, *args):
+        args = list(args)
+        for i in range(len(args)):
+            if isinstance(args[i], df.GenericVector):
+                self.apply_isources_to_object()
+                self.apply_vsources_to_vector(args[i])
+            else:
+                args[i] = self.apply_vsources_to_matrix(args[i])
+
+        return args
+
+    def apply_vsources_to_matrix(self, A):
+
+        # Charge constraints
+        for group, row in zip(self.groups, self.rows_charge):
+            ds_group = np.sum([self.dss(self.int_bnd_ids[i]) for i in group])
+            S = df.assemble(1.*ds_group)
+
+            a0 = df.inner(self.mu, df.dot(df.grad(self.phi), self.n))*ds_group
+            A0 = df.assemble(a0)
+            cols, vals = A0.getrow(0)
+
+            B = df.Matrix()
+            self.compiled.addrow(A, B, cols, vals, row, self.V)
+            A = B
+
+        # Potential constraints
+        for vsource, row in zip(self.vsources, self.rows_potential):
+            obj_a_id = vsource[0]
+            obj_b_id = vsource[1]
+
+            cols = []
+            vals = []
+
+            if obj_a_id != -1:
+                dof_a = self.objects[obj_a_id].get_free_row()
+                cols.append(dof_a)
+                vals.append(-1.0)
+
+            if obj_b_id != -1:
+                dof_b = self.objects[obj_b_id].get_free_row()
+                cols.append(dof_b)
+                vals.append(+1.0)
+
+            cols = np.array(cols, dtype=np.uintp)
+            vals = np.array(vals)
+
+            B = df.Matrix()
+            self.compiled.addrow(A, B, cols, vals, row, self.V)
+            A = B
+
+        return A
+
+    def apply_vsources_to_vector(self, b):
+
+        # Charge constraints
+        for group, row in zip(self.groups, self.rows_charge):
+            charge_group  = np.sum([self.objects[i].charge for i in group])
+            b[row] = charge_group
+
+        # Potential constraints
+        for vsource, row in zip(self.vsources, self.rows_potential):
+            V_ab   = vsource[2]
+            b[row] = V_ab
+
+        return b
+
+    def apply_isources_to_object(self):
+
+        for isource in self.isources:
+            obj_a_id = isource[0]
+            obj_b_id = isource[1]
+            dQ = isource[2]*self.dt
+
+            if obj_a_id != -1:
+                self.objects[obj_a_id].charge -= dQ
+
+            if obj_b_id != -1:
+                self.objects[obj_a_id].charge += dQ

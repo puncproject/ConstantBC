@@ -20,16 +20,17 @@ import numpy as np
 from numpy.linalg import norm
 import matplotlib.pyplot as plt
 from ConstantBC import *
+from itertools import count
 
 iterative_solver    = True
 monitor_convergence = False
 order               = 2
 resolution          = 4
 
+vsources = [[1,0,-1]]
+
 rho = Constant(0.0)
 rho = Expression("100*x[1]", degree=2)
-
-Q = [Constant(7.), Constant(-3.)]
 
 print("Loading external mesh")
 fname = "mesh/circle_and_square_in_rectangle_res"+str(resolution)
@@ -42,8 +43,11 @@ phi = TrialFunction(V)
 psi = TestFunction(V)
 
 bc_e = DirichletBC(V, Constant(0), bnd, 1)
-objects = [ConstantBC(V, bnd, 2+i) for i in range(num_objects)]
-# constraints = CircuitConstraints(objects, vsources)
+objects = [ObjectBC(V, bnd, 2+i) for i in range(num_objects)]
+circuit = Circuit(V, bnd, objects, vsources)
+
+objects[0].charge = 7.
+objects[1].charge = -3.
 
 print("Creating variational form")
 
@@ -59,140 +63,80 @@ print("Applying boundary conditions")
 bc_e.apply(A, b)
 
 for o in objects:
-    o.apply(A,b)
+    o.apply(A, b)
 
-# apply_circuit_constraints(A, b, objects, vsources)
+A, b = circuit.apply(A, b)
 
-vsources = [[1,0,-1]]
+# groups = get_charge_sharing_sets(vsources, 2)
 
-groups = get_charge_sharing_sets(vsources, 2)
+# R  = FunctionSpace(mesh, "Real", 0)
+# mu = TestFunction(R)
+# dss = Measure("ds", domain=mesh, subdomain_data=bnd)
+# n = FacetNormal(mesh)
+# code = open('addrow2.cpp', 'r').read()
+# compiled = compile_extension_module(code=code)
 
-R  = FunctionSpace(mesh, "Real", 0)
-mu = TestFunction(R)
-dss = Measure("ds", domain=mesh, subdomain_data=bnd)
-n = FacetNormal(mesh)
-code = open('addrow2.cpp', 'r').read()
-compiled = compile_extension_module(code=code)
+# rows_charge    = [g[0] for g in groups]
+# rows_potential = list(set(range(num_objects))-set(rows_charge))
+# rows_charge    = [list(objects[i].get_boundary_values().keys())[0] for i in rows_charge]
+# rows_potential = [list(objects[i].get_boundary_values().keys())[0] for i in rows_potential]
 
-for group in groups:
+# # if int_bnd_ids == None:
+# int_bnd_ids    = [objects[i].domain_args[1] for i in range(num_objects)]
 
-    ds_group = np.sum([dss(i+2) for i in group])
-    Q_group  = np.sum([Q[i](0)  for i in group])
-    S = assemble(1.*ds_group)
+# for group, row in zip(groups, rows_charge):
 
-    a0 = inner(mu, dot(grad(phi), n))*ds_group
-    A0 = assemble(a0)
-    cols, vals = A0.getrow(0)
+#     # A
 
-    obj_id = group[0]
-    obj = objects[obj_id]
-    row = list(obj.get_boundary_values().keys())[0]
+#     ds_group = np.sum([dss(int_bnd_ids[i]) for i in group])
+#     S = assemble(1.*ds_group)
 
-    B = Matrix()
-    compiled.addrow(A, B, cols, vals, row, V)
-    A = B
-
-    b[row] = Q_group
-
-used_object_rows   = [g[0] for g in groups]
-unused_object_rows = list(set(range(num_objects))-set(used_object_rows))
-unused_rows = [list(objects[i].get_boundary_values().keys())[0] for i in unused_object_rows]
-
-for vsource, row in zip(vsources, unused_rows):
-
-        obj_a_id = vsource[0]
-        obj_b_id = vsource[1]
-        V_ab     = vsource[2]
-
-        cols = []
-        vals = []
-
-        if obj_a_id != -1:
-            obj_a = objects[obj_a_id]
-            dof_a = list(obj_a.get_boundary_values().keys())[0]
-            cols.append(dof_a)
-            vals.append(-1.0)
-
-        if obj_b_id != -1:
-            obj_b = objects[obj_b_id]
-            dof_b = list(obj_b.get_boundary_values().keys())[0]
-            cols.append(dof_b)
-            vals.append(+1.0)
-
-        cols = np.array(cols, dtype=np.uintp)
-        vals = np.array(vals)
-
-        print(cols, vals, V_ab)
-
-        B = Matrix()
-        compiled.addrow(A, B, cols, vals, row, V)
-        A = B
-
-        b[row] = V_ab
-
-
-#     for obj_id in group[1:]:
-
-#         obj = objects[obj_id]
-#         bnd_dof = list(obj.get_boundary_values().keys())[0]
-
-#         vsource = vsources[vs_id]
-#         obj_a_id = vsource[0]
-#         obj_b_id = vsource[1]
-#         V_ab = vsource[2]
-
-#         cols = []
-#         vals = []
-
-#         if obj_a_id != -1:
-#             obj_a = objects[obj_a_id]
-#             dof_a = list(obj_a.get_boundary_values().keys())[0]
-#             cols.append(dof_a)
-#             vals.append(-1.0)
-
-#         if obj_b_id != -1:
-#             obj_b = objects[obj_b_id]
-#             dof_b = list(obj_b.get_boundary_values().keys())[0]
-#             cols.append(dof_b)
-#             vals.append(+1.0)
-
-#         cols = np.array(cols, dtype=np.uintp)
-#         vals = np.array(vals)
-
-#         # obj_a = objects[obj_a_id]
-#         # obj_b = objects[obj_b_id]
-#         # dof_a = list(obj_a.get_boundary_values().keys())[0]
-#         # dof_b = list(obj_b.get_boundary_values().keys())[0]
-
-#         # cols = np.array([dof_a, dof_b],dtype=np.uintp)
-#         # vals = np.array([-1.0, 1.0])
-
-#         B = Matrix()
-#         compiled.addrow(A, B, cols, vals, bnd_dof, V)
-#         A = B
-
-#         b[bnd_dof] = V_ab
-
-#         vs_id += 1
-
-
-# for i, o in enumerate(objects):
-#     print("Setting final dof on boundary to enforce inner(dot(grad(u), n))*dsi = Q")
-
-#     ds_i = dss(2+i)
-#     S = assemble(1.*ds_i)
-
-#     a0 = inner(mu, dot(grad(phi), n))*ds_i
+#     a0 = inner(mu, dot(grad(phi), n))*ds_group
 #     A0 = assemble(a0)
+#     cols, vals = A0.getrow(0)
 
-#     bnd_dof = list(o.get_boundary_values().keys())[0]
-#     row, col = A0.getrow(0)
-#     code = open('addrow.cpp', 'r').read()
-#     compiled = compile_extension_module(code=code)
 #     B = Matrix()
-#     compiled.addrow(A, B, A0, bnd_dof, V)
+#     compiled.addrow(A, B, cols, vals, row, V)
 #     A = B
-#     b[bnd_dof] = Q[i](0)
+
+#     # b
+
+#     charge_group  = np.sum([objects[i].charge for i in group])
+#     b[row] = charge_group
+
+# for vsource, row in zip(vsources, rows_potential):
+
+#     # A
+
+#     obj_a_id = vsource[0]
+#     obj_b_id = vsource[1]
+#     V_ab     = vsource[2]
+
+#     cols = []
+#     vals = []
+
+#     if obj_a_id != -1:
+#         obj_a = objects[obj_a_id]
+#         dof_a = list(obj_a.get_boundary_values().keys())[0]
+#         cols.append(dof_a)
+#         vals.append(-1.0)
+
+#     if obj_b_id != -1:
+#         obj_b = objects[obj_b_id]
+#         dof_b = list(obj_b.get_boundary_values().keys())[0]
+#         cols.append(dof_b)
+#         vals.append(+1.0)
+
+#     cols = np.array(cols, dtype=np.uintp)
+#     vals = np.array(vals)
+
+#     B = Matrix()
+#     compiled.addrow(A, B, cols, vals, row, V)
+#     A = B
+
+#     # b
+
+#     b[row] = V_ab
 
 phi = Function(V)
 
@@ -204,26 +148,22 @@ if iterative_solver:
     solver.parameters['maximum_iterations'] = 100000
     solver.parameters['monitor_convergence'] = monitor_convergence
 
-    solver.set_operator(B)
+    solver.set_operator(A)
     solver.solve(phi.vector(), b)
 else:
     print("Solving equation using direct solver")
-    solve(B, phi.vector(), b)
+    solve(A, phi.vector(), b)
 
-print("Computing actual object charge")
-Qm = assemble(dot(grad(phi), n) * dss(2))
-print("Object 1 charge: ", Qm)
-Qm = assemble(dot(grad(phi), n) * dss(3))
-print("Object 2 charge: ", Qm)
-Qm = assemble(dot(grad(phi), n) * (dss(2)+dss(3)))
-print("Total charge: ", Qm)
-d = 0.3
-R = 0.15
-V1 = phi(-d-R,0)
-V2 = phi(d-R,0)
-print("Object 1 voltage: ", V1)
-print("Object 2 voltage: ", V2)
-print("Voltage difference: ", V2-V1)
+for o in objects:
+    o.correct_charge(phi)
+
+Qs = [o.charge for o in objects]
+Vs = [o.get_potential(phi) for o in objects]
+
+for i,Q,V in zip(count(),Qs,Vs):
+    print("Object {}: Q={}, V={}".format(i,Q,V))
+
+print("Tot/diff: Q={}, V={}".format(sum(Qs),Vs[1]-Vs[0]))
 
 # ri = 0.2
 # ro = 1.0
