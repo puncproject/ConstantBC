@@ -16,6 +16,7 @@
 
 import dolfin as df
 import numpy as np
+import copy
 
 class ConstantBC(df.DirichletBC):
     """
@@ -47,23 +48,20 @@ class ConstantBC(df.DirichletBC):
 
         args = list(args)
         args.insert(1, df.Constant(0.0))
-        monitor = False
-        self.compiled_apply = kwargs.pop('compiled_apply', False)
+        self.monitor = False
+        self.compiled_apply = kwargs.pop('compiled_apply', True)
         if self.compiled_apply:
             code = open('apply.cpp', 'r').read()
             self.compiled_apply = df.compile_extension_module(code=code)
 
         df.DirichletBC.__init__(self, *args, **kwargs)
 
-    def monitor(self, monitor):
-        self.monitor = monitor
-
     def apply(self, *args):
 
         for A in args:
 
             if isinstance(A, df.GenericVector):
-                # Applying to load vectory.
+                # Applying to load vector.
                 # Set all elements to zero but leave the first.
 
                 ind = self.get_boundary_values().keys()
@@ -104,4 +102,83 @@ class ConstantBC(df.DirichletBC):
                         values[self_index] = num_of_neighbors
                         A.setrow(i, surface_neighbors, values)
                     A.apply('insert')
+
+class CircuitConstraints(object):
+
+    def __init__(objects, vsources, isources):
+        pass
+
+    def apply(self, *args):
+        for A in args:
+            if isinstance(A, df.GenericVector):
+                self.apply_to_vector(A)
+            else:
+                self.apply_to_matrix(A)
+
+    def apply_to_matrix(self, A):
+        pass
+
+def relabel_bnd(bnd):
+    """
+    Relabels MeshFunction bnd such that boundaries are marked 1, 2, 3, etc.
+    instead of arbitrary numbers. The order is preserved, and by convention the
+    first boundary is the exterior boundary. The objects start at 2. The
+    background (not marked) is 0.
+    """
+    new_bnd = bnd
+    new_bnd = df.MeshFunction("size_t", bnd.mesh(), bnd.dim())
+    new_bnd.set_all(0)
+
+    old_ids = np.array([int(tag) for tag in set(bnd.array())])
+    old_ids = np.sort(old_ids)[1:]
+    for new_id, old_id in enumerate(old_ids, 1):
+        new_bnd.array()[bnd.where_equal(old_id)] = int(new_id)
+
+    num_objects = len(old_ids)-1
+    return new_bnd, num_objects 
+
+def load_mesh(fname):
+    mesh = df.Mesh(fname+".xml")
+    bnd  = df.MeshFunction("size_t", mesh, fname+"_facet_region.xml")
+    bnd, num_objects = relabel_bnd(bnd)
+    return mesh, bnd, num_objects
+
+def get_charge_sharing_set(vsources, node, group):
+
+    group.append(node)
+
+    i = 0
+    while i < len(vsources):
+        vsource = vsources[i]
+        if vsource[0] == node:
+            vsources.pop(i)
+            get_charge_sharing_set(vsources, vsource[1], group)
+        elif vsource[1] == node:
+            vsources.pop(i)
+            get_charge_sharing_set(vsources, vsource[0], group)
+        else:
+            i += 1
+
+def get_charge_sharing_sets(vsources, num_objects):
+
+    vsources = copy.deepcopy(vsources)
+    nodes = set(range(num_objects))
+
+    groups = []
+    while vsources != []:
+        group = []
+        get_charge_sharing_set(vsources, vsources[0][0], group)
+        groups.append(group)
+
+    for group in groups:
+        for node in group:
+            if node != -1:
+                nodes.remove(node)
+
+    groups = list(filter(lambda group: -1 not in group, groups))
+
+    for node in nodes:
+        groups.append([node])
+
+    return groups
 

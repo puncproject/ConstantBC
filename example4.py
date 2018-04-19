@@ -27,7 +27,7 @@ monitor_bc          = False
 compiled_apply      = True
 external_mesh       = True # NB: There's some trouble with mshr.
 store_to_file       = False
-order               = 1
+order               = 2
 resolution          = 4
 
 rho = Constant(0.0)
@@ -73,7 +73,7 @@ mu = TestFunction(R)
 
 bc_e = DirichletBC(W, Constant(0), bnd, gamma_e_id)
 bc_i = ConstantBC(W, bnd, gamma_i_id, compiled_apply=compiled_apply)
-bc_i.monitor(monitor_bc)
+bc_i.monitor = monitor_bc
 
 dss = Measure("ds", domain=mesh, subdomain_data=bnd)
 ds_i = dss(gamma_i_id)

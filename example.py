@@ -75,7 +75,7 @@ psi, mu = TestFunctions(W)
 
 bc_e = DirichletBC(W.sub(0), Constant(0), bnd, gamma_e_id)
 bc_i = ConstantBC(W.sub(0), bnd, gamma_i_id, compiled_apply=compiled_apply)
-bc_i.monitor(monitor_bc)
+bc_i.monitor = monitor_bc
 
 dss = Measure("ds", domain=mesh, subdomain_data=bnd)
 ds_i = dss(gamma_i_id)
