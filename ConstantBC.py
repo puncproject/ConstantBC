@@ -196,7 +196,8 @@ def get_charge_sharing_sets(vsources, num_objects):
 
 class Circuit(object):
 
-    def __init__(self, V, bnd, objects, vsources=None, isources=None, dt=None, int_bnd_ids=None):
+    def __init__(self, V, bnd, objects, vsources=None, isources=None,
+                 dt=None, int_bnd_ids=None, eps0=1):
 
         num_objects = len(objects)
 
@@ -217,6 +218,7 @@ class Circuit(object):
         self.vsources = vsources
         self.isources = isources
         self.objects = objects
+        self.eps0 = eps0
 
         self.groups = get_charge_sharing_sets(vsources, num_objects)
 
@@ -260,7 +262,7 @@ class Circuit(object):
         for group, row in zip(self.groups, self.rows_charge):
             ds_group = np.sum([self.dss(self.int_bnd_ids[i]) for i in group])
             # ds_group = np.sum([self.dss(self.int_bnd_ids[i], degree=1) for i in group])
-            a0 = df.inner(self.mu, df.dot(df.grad(self.phi), self.n))*ds_group
+            a0 = self.eps0*df.inner(self.mu, df.dot(df.grad(self.phi), self.n))*ds_group
             A0 = df.assemble(a0)
             cols, vals = A0.getrow(0)
 
