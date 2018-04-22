@@ -23,6 +23,35 @@ from ConstantBC import *
 from itertools import count
 from numpy import log as ln
 
+def solve_poisson(mesh, rho, order):
+
+    V = FunctionSpace(mesh, 'CG', order)
+    phi = TrialFunction(V)
+    psi = TestFunction(V)
+
+    a = dot(grad(phi), grad(psi)) * dx
+    L = rho*psi * dx
+
+    bc = DirichletBC(V, Constant(0), DomainBoundary())
+    phi = Function(V)
+
+    # solve(a==L, phi, bcs=bc)
+
+    A = assemble(a)
+    b = assemble(L)
+    bc.apply(A, b)
+
+    solver = PETScKrylovSolver('gmres','hypre_amg')
+    solver.parameters['absolute_tolerance'] = 1e-14
+    solver.parameters['relative_tolerance'] = 1e-10 #e-12
+    solver.parameters['maximum_iterations'] = 100000
+    solver.parameters['monitor_convergence'] = False
+
+    solver.set_operator(A)
+    solver.solve(phi.vector(), b)
+
+    return phi
+
 orders              = [1,2]
 resolutions         = [1,2,3,4,5]#,6]#,7,8]
 
@@ -43,10 +72,14 @@ EPS = DOLFIN_EPS
 # domain = Rectangle(Point(-ll,-ll), Point(ll,ll)) \
 #        - Polygon([Point(-lo,ll), Point(-li,ll-lh), Point(li,ll-lh), Point(lo,ll)])
 domain = Rectangle(Point(-ll,-ll), Point(ll,ll)) \
-       - Circle(Point(0,0), l, 80)
+       - Circle(Point(0,0), l, 90)
+
+# convergence for number of segments and corresponding exterior angle
+# 90 / 4 degrees      2.97
+# 72 / 5 degrees      2.87
+# 60 / 6 degrees      2.64
 
 mesh = generate_mesh(domain, 10)
-# mesh = Mesh("triangle.xml")
 plot(mesh); plt.show()
 
 hmins = {}
@@ -55,30 +88,14 @@ for res in resolutions:
 
     order = 5
     print("Order: {}, resolution: {} (reference)".format(order,res))
-
-    W = FunctionSpace(mesh, 'CG', order)
-    phi = TrialFunction(W)
-    psi = TestFunction(W)
-    a = dot(grad(phi), grad(psi)) * dx
-    L = rho*psi * dx
-    bc = DirichletBC(W, Constant(0), DomainBoundary())
-    phi_ref = Function(W)
-    solve(a==L, phi_ref, bcs=bc)
+    phi_ref = solve_poisson(mesh, rho, order)
 
     hmins[res] = mesh.hmin()
     errors[res] = {}
     for order in orders:
 
         print("Order: {}, resolution: {}".format(order,res))
-
-        V = FunctionSpace(mesh, 'CG', order)
-        phi = TrialFunction(V)
-        psi = TestFunction(V)
-        a = dot(grad(phi), grad(psi)) * dx
-        L = rho*psi * dx
-        bc = DirichletBC(V, Constant(0), DomainBoundary())
-        phi_sol = Function(V)
-        solve(a==L, phi_sol, bcs=bc)
+        phi_sol = solve_poisson(mesh, rho, order)
 
         error = errornorm(phi_ref, phi_sol, degree_rise=0, mesh=mesh)
         errors[res][order] = error
@@ -101,7 +118,7 @@ for order in orders:
         print("h=%2.2E E=%2.2E r=%.2f" %(x[i], y[i], r[i]))
 
 plt.grid()
-plt.xlabel('hmin')
+plt.xlabel('$h_min')
 plt.ylabel('$L_2$ norm error')
 plt.title('Convergence')
 plt.legend(loc='lower right')
