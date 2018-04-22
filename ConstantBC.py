@@ -250,7 +250,10 @@ class Circuit(object):
 
         # Charge constraints
         for group, row in zip(self.groups, self.rows_charge):
+            degree = self.V.ufl_element().degree()
+            degree = 1
             ds_group = np.sum([self.dss(self.int_bnd_ids[i]) for i in group])
+            # ds_group = np.sum([self.dss(self.int_bnd_ids[i], degree=degree) for i in group])
             S = df.assemble(1.*ds_group)
 
             a0 = df.inner(self.mu, df.dot(df.grad(self.phi), self.n))*ds_group
