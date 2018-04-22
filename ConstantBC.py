@@ -227,7 +227,7 @@ class Circuit(object):
         self.phi = df.TrialFunction(V)
         self.dss = df.Measure("ds", domain=mesh, subdomain_data=bnd)
         self.n = df.FacetNormal(mesh)
-        code = open('addrow2.cpp', 'r').read()
+        code = open('addrow.cpp', 'r').read()
         self.compiled = df.compile_extension_module(code=code)
 
         # Rows in which to store charge and potential constraints

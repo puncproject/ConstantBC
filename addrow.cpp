@@ -12,7 +12,9 @@
 namespace dolfin
 {
 
-void addrow(GenericMatrix& B, GenericMatrix& Bc, GenericMatrix& A0,
+void addrow(GenericMatrix& B, GenericMatrix& Bc,
+            const std::vector<std::size_t> &cols,
+            const std::vector<double> &vals,
             int replace_row, const FunctionSpace& V)
 {
   Timer timer("Add row with new sparsity to matrix");
@@ -80,7 +82,10 @@ void addrow(GenericMatrix& B, GenericMatrix& Bc, GenericMatrix& A0,
     if (global_row == replace_row)
     { 
       if (MPI::rank(mesh.mpi_comm()) == 0)
-        A0.getrow(0, columns, values);
+      {
+        columns = cols;
+        values = vals;
+      }
     }
     else
     {
