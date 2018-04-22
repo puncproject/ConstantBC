@@ -17,6 +17,7 @@
 import dolfin as df
 import numpy as np
 import copy
+import os
 
 class ConstantBC(df.DirichletBC):
     """
@@ -51,7 +52,9 @@ class ConstantBC(df.DirichletBC):
         self.monitor = False
         self.compiled_apply = kwargs.pop('compiled_apply', True)
         if self.compiled_apply:
-            code = open('apply.cpp', 'r').read()
+            thisdir = os.path.dirname(__file__)
+            path = os.path.join(thisdir, 'apply.cpp')
+            code = open(path, 'r').read()
             self.compiled_apply = df.compile_extension_module(code=code)
 
         df.DirichletBC.__init__(self, *args, **kwargs)
@@ -229,7 +232,10 @@ class Circuit(object):
         self.phi = df.TrialFunction(V)
         self.dss = df.Measure("ds", domain=mesh, subdomain_data=bnd)
         self.n = df.FacetNormal(mesh)
-        code = open('addrow.cpp', 'r').read()
+
+        thisdir = os.path.dirname(__file__)
+        path = os.path.join(thisdir, 'addrow.cpp')
+        code = open(path, 'r').read()
         self.compiled = df.compile_extension_module(code=code)
 
         # Rows in which to store charge and potential constraints
