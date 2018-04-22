@@ -230,32 +230,36 @@ class Circuit(object):
         code = open('addrow2.cpp', 'r').read()
         self.compiled = df.compile_extension_module(code=code)
 
+        # Rows in which to store charge and potential constraints
         rows_charge    = [g[0] for g in self.groups]
         rows_potential = list(set(range(num_objects))-set(rows_charge))
         self.rows_charge    = [objects[i].get_free_row() for i in rows_charge]
         self.rows_potential = [objects[i].get_free_row() for i in rows_potential]
 
     def apply(self, *args):
+        # NB: Does not modify matrix in-place.
+        # Return value must be used, e.g:
+        # A, b = circuit.apply(A, b)
+
         args = list(args)
         for i in range(len(args)):
             if isinstance(args[i], df.GenericVector):
                 self.apply_isources_to_object()
-                self.apply_vsources_to_vector(args[i])
+                args[i] = self.apply_vsources_to_vector(args[i])
             else:
                 args[i] = self.apply_vsources_to_matrix(args[i])
 
         return args
 
     def apply_vsources_to_matrix(self, A):
+        # NB: Does not modify matrix in-place.
+        # Return value must be used, e.g:
+        # A = circuit.apply_vsources_to_matrix(A, b)
 
         # Charge constraints
         for group, row in zip(self.groups, self.rows_charge):
-            degree = self.V.ufl_element().degree()
-            degree = 1
             ds_group = np.sum([self.dss(self.int_bnd_ids[i]) for i in group])
-            # ds_group = np.sum([self.dss(self.int_bnd_ids[i], degree=degree) for i in group])
-            S = df.assemble(1.*ds_group)
-
+            # ds_group = np.sum([self.dss(self.int_bnd_ids[i], degree=1) for i in group])
             a0 = df.inner(self.mu, df.dot(df.grad(self.phi), self.n))*ds_group
             A0 = df.assemble(a0)
             cols, vals = A0.getrow(0)
@@ -295,13 +299,11 @@ class Circuit(object):
 
         # Charge constraints
         for group, row in zip(self.groups, self.rows_charge):
-            charge_group  = np.sum([self.objects[i].charge for i in group])
-            b[row] = charge_group
+            b[row] = np.sum([self.objects[i].charge for i in group])
 
         # Potential constraints
         for vsource, row in zip(self.vsources, self.rows_potential):
-            V_ab   = vsource[2]
-            b[row] = V_ab
+            b[row] = vsource[2]
 
         return b
 
