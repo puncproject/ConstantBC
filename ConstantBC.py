@@ -150,7 +150,7 @@ def relabel_bnd(bnd):
         new_bnd.array()[bnd.where_equal(old_id)] = int(new_id)
 
     num_objects = len(old_ids)-1
-    return new_bnd, num_objects 
+    return new_bnd, num_objects
 
 def load_mesh(fname):
     mesh = df.Mesh(fname+".xml")
