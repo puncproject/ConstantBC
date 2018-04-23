@@ -121,6 +121,7 @@ class ObjectBC(ConstantBC):
         ConstantBC.__init__(self, V, bnd, bnd_id)
 
         self.charge = 0.
+        self.id = bnd_id
         mesh = self.function_space().mesh()
         self.n = df.FacetNormal(mesh)
         self.dss = df.Measure("ds", domain=mesh, subdomain_data=bnd)
