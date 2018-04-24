@@ -81,17 +81,19 @@ class ConstantBC(df.DirichletBC):
                 # remaining to be the average of it's neighbors also on the
                 # boundary.
 
+                index_dtype = df.la_index_dtype()
+
                 ind = self.get_boundary_values().keys()
                 if self.compiled_apply:
-                    self.compiled_apply.apply(A, np.array(list(ind), dtype=np.intc))
+                    self.compiled_apply.apply(A, np.array(list(ind), dtype=index_dtype))
 
                 else:
                     length = len(list(ind))-2
                     allneighbors = []
-                    inda = np.array(list(ind), dtype=np.intc)
+                    inda = np.array(list(ind), dtype=index_dtype)
                     for it, i in enumerate(inda[1:]):
                         allneighbors.append(A.getrow(i)[0])
-                    zero_rows = np.array(inda[1:], dtype=np.intc)
+                    zero_rows = np.array(inda[1:], dtype=index_dtype)
                     A.zero(zero_rows)
 
                     for it, i in enumerate(inda[1:]):
