@@ -124,18 +124,26 @@ class ObjectBC(ConstantBC):
 
         self.charge = 0.
         self.collected_current = 0.
+        self.potential = 0.
         self.id = bnd_id
         mesh = self.function_space().mesh()
         self.n = df.FacetNormal(mesh)
         self.dss = df.Measure("ds", domain=mesh, subdomain_data=bnd)
 
-    def correct_charge(self, phi):
+    def update_charge(self, phi):
         bnd_id = self.domain_args[1]
         projection = df.dot(df.grad(phi), self.n) * self.dss(bnd_id)
         self.charge = df.assemble(projection)
+        return self.charge
 
-    def get_potential(self, phi):
-        return self.get_boundary_value(phi)
+    def update_potential(self, phi):
+        self.potential = self.get_boundary_value(phi)
+        return self.potential
+
+    def update(self, phi):
+        self.update_charge(phi)
+        self.update_potential(phi)
+        return self.charge, self.potential
 
 def relabel_bnd(bnd):
     """
