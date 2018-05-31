@@ -171,6 +171,7 @@ def load_mesh(fname):
     return mesh, bnd, num_objects
 
 def get_charge_sharing_set(vsources, node, group):
+    # Used by get_charge_sharing_sets()
 
     group.append(node)
 
@@ -187,6 +188,33 @@ def get_charge_sharing_set(vsources, node, group):
             i += 1
 
 def get_charge_sharing_sets(vsources, num_objects):
+    """
+    Given a list of vsources, this will track which sources are charge-sharing.
+    Each tuple in the vsources list represents a voltage source. The first two
+    numbers are, respectively, the objects connected to the negative and
+    positive terminals of the voltage source. The third number is the voltage.
+    The object are labelled 0,1,2,... in the same order as in int_bnd_ids. -1
+    means system ground.
+
+    Example::
+
+        vsources = [(1,2,1.0),
+                    (2,3,2.0),
+                    (4,5,3.0),
+                    (7,4,2.0),
+                    (9,-1,7.),
+                    (10,9,2.)]
+
+        get_charge_sharing_sets(vsources, 11)
+
+    Returns::
+
+        [[1, 2, 3], [4, 5, 7], [0], [6], [8]]
+
+    Objects 1,2,3 are connected by the two upper voltage sources, and 4,5,7 by
+    the next three. Objects 0, 6 and 8 are not connected to any. Objects 9 and
+    10 are grounded.
+    """
 
     vsources = copy.deepcopy(vsources)
     nodes = set(range(num_objects))
