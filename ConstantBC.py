@@ -339,3 +339,66 @@ class Circuit(object):
 
             if obj_b_id != -1:
                 self.objects[obj_a_id].charge += dQ
+
+class ConstantBoundary(df.SubDomain):
+    """
+    Enforces constant values for both `TrialFunction` and `TestFunction` on a
+    boundary with id `bnd_id` as given by the `FacetFunction` named `bnd`.
+    Assumes some sort of elements where the vertices on the boundary are nodes,
+    but not necessarily the only nodes. E.g. CG1, CG2, ... and so forth.
+
+    Usage::
+        mesh = Mesh("mesh.xml")
+        bnd  = MeshFunction('size_t', mesh, "mesh_facet_region.xml")
+        cb   = ConstantBoundary(mesh, bnd, bnd_id)
+        V    = FunctionSpace(mesh, 'CG', 2, constrained_domain=cb)
+
+    Since FEniCS's constrained_domain is limited to analytic expressions it is
+    not really suitable to real-world problems with CAD-based meshes.
+    ConstantBoundary overcomes this by creating a piecewise linear function on
+    the boundary from an arbitrary mesh. Unfortunately, this process is slow. Use
+    ConstantBC if possible, as it is more CAD-friendly.
+    """
+
+    def __init__(self, mesh, bnd, bnd_id, tol=df.DOLFIN_EPS):
+
+        df.SubDomain.__init__(self)
+        self.mesh   = mesh
+        self.bnd    = bnd
+        self.bnd_id = bnd_id
+        self.tol    = tol
+
+        # Pick a random vertex on the bnd (assuming this vertex is a node)
+        facet_id    = bnd.where_equal(bnd_id)[0]
+        facet       = list(facets(mesh))[facet_id]
+        vertex_id   = facet.entities(0)[0]
+        self.vertex = mesh.coordinates()[vertex_id]
+
+        self.bnd_facets = bnd.where_equal(bnd_id)
+
+        self.bmesh = df.BoundaryMesh(mesh, 'exterior')
+        facet_dim = self.bmesh.topology().dim()
+        self.cell_map = self.bmesh.entity_map(facet_dim)
+
+    def on_bnd_id(self, x):
+
+        # If changing this function, keep in mind that it should work for all
+        # points on boundary facets. Not just the vertices.
+
+        for i, facet in enumerate(df.cells(self.bmesh)):
+            if self.cell_map[i] in self.bnd_facets:
+                if facet.distance(df.Point(x)) < self.tol:
+                    return True
+
+        return False
+
+    def inside(self, x, on_bnd):
+        # Some FEniCS functions (not all) will pass 3D x even in 2D problems
+        x = x[:self.mesh.geometry().dim()]
+        return np.linalg.norm(x-self.vertex) < self.tol
+
+    def map(self, x, y):
+        if self.on_bnd_id(x):
+            y[:] = self.vertex
+        else:
+            y[:] = x[:]
