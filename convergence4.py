@@ -26,10 +26,12 @@ from numpy import log as ln
 set_log_level(WARNING)
 
 orders              = [1,2]
-resolutions         = [1,2,3,4]#,5]
+resolutions         = [1,2,3,4,5]
 method = 'bicgstab'
 precond = 'ilu'
 monitor = True
+use_dirichlet = True
+segments = 70
 
 rho = Expression("100*x[1]", degree=1)
 # rho = Constant(0)
@@ -50,7 +52,6 @@ h = 3*r
 l = d+3*r
 EPS = 1e-2 #DOLFIN_EPS
 
-segments = 90
 domain = Rectangle(Point(-l,-h), Point(l,h)) \
        - Circle(Point(-d,0), r, segments) \
        - Circle(Point( d,0), r, segments)
@@ -72,7 +73,8 @@ left_bnd = LeftObjectBoundary()
 right_bnd = RightObjectBoundary()
 
 mesh = generate_mesh(domain, 10)
-# plot(mesh); plt.show()
+print(len(list(cells(mesh))))
+plot(mesh); plt.show()
 
 for res in resolutions:
     mesh = refine(mesh)
@@ -134,42 +136,6 @@ for res in resolutions:
     left_bnd.mark( bnd, 2)
     right_bnd.mark(bnd, 3)
 
-    # order = 3
-    # print("Order: {}, resolution: {} (reference)".format(order,res))
-
-    # V = FunctionSpace(mesh, 'CG', order)
-    # phi = TrialFunction(V)
-    # psi = TestFunction(V)
-
-    # a = dot(grad(phi), grad(psi)) * dx
-    # L = rho*psi * dx
-
-    # bcs = [DirichletBC(V, Constant(i), bnd, i+1) for i in range(3)]
-    # phi_ref = Function(V)
-
-    # # solve(a==L, phi, bcs=bc)
-
-    # A = assemble(a)
-    # b = assemble(L)
-    # for bc in bcs:
-    #     bc.apply(A, b)
-
-    # solver = PETScKrylovSolver(method,precond)
-    # solver.parameters['absolute_tolerance'] = 1e-14
-    # solver.parameters['relative_tolerance'] = 1e-10 #e-12
-    # solver.parameters['maximum_iterations'] = 100000
-    # solver.parameters['monitor_convergence'] = monitor
-
-    # solver.set_operator(A)
-    # solver.solve(phi_ref.vector(), b)
-
-    # n = FacetNormal(mesh)
-    # dss = Measure("ds", domain=mesh, subdomain_data=bnd)
-
-    # charge1 = assemble(dot(grad(phi_ref), n) * dss(2, degree=1))
-    # charge2 = assemble(dot(grad(phi_ref), n) * dss(3, degree=1))
-    # total_charge = charge1 + charge2
-
     hmins[res] = mesh.hmin()
     errors[res] = {}
     for order in orders:
@@ -197,12 +163,15 @@ for res in resolutions:
 
         A = assemble(a)
         b = assemble(L)
-        # for bc in bcs:
-        #     bc.apply(A, b)
-        bce.apply(A, b)
-        A, b = circuit.apply(A, b)
-        for o in objects:
-            o.apply(A, b)
+
+        if use_dirichlet:
+            for bc in bcs:
+                bc.apply(A, b)
+        else:
+            bce.apply(A, b)
+            A, b = circuit.apply(A, b)
+            for o in objects:
+                o.apply(A, b)
 
         solver = PETScKrylovSolver(method,precond)
         solver.parameters['absolute_tolerance'] = 1e-14
@@ -235,6 +204,10 @@ for order in orders:
     print("order={}".format(order))
     for i in range(len(x)):
         print("h=%2.2E E=%2.2E r=%.2f" %(x[i], y[i], r[i]))
+
+    with open('convergence4.txt', 'a') as file:
+        for xx,yy in zip(x,y):
+            file.write("{} {} {} {} {}\n".format(use_dirichlet, order, segments, xx, yy))
 
 plt.grid()
 plt.xlabel('$h_\\mathrm{{min}}$')
